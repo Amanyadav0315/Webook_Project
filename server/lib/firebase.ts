@@ -44,23 +44,34 @@ class FirebaseService {
 
     const isDryRun = process.env.FCM_DRY_RUN === 'true';
     
-    const message: admin.messaging.Message = {
-      notification: {
-        title: 'New Order',
-        body: `Order ${orderId} placed by ${userId}`,
-      },
-      data: {
-        orderId,
-        userId,
-        type: 'order.created',
-      },
-    };
+    let message: admin.messaging.Message;
 
-    // Use device token if available, otherwise use topic
     if (deviceToken) {
-      message.token = deviceToken;
+      message = {
+        notification: {
+          title: 'New Order',
+          body: `Order ${orderId} placed by ${userId}`,
+        },
+        data: {
+          orderId,
+          userId,
+          type: 'order.created',
+        },
+        token: deviceToken,
+      };
     } else {
-      message.topic = 'orders';
+      message = {
+        notification: {
+          title: 'New Order',
+          body: `Order ${orderId} placed by ${userId}`,
+        },
+        data: {
+          orderId,
+          userId,
+          type: 'order.created',
+        },
+        topic: 'orders',
+      };
     }
 
     try {

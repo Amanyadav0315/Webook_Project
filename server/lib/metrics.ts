@@ -45,7 +45,7 @@ export class MetricsService {
   async resetMetrics(): Promise<void> {
     const keys = ['received', 'deduped', 'sent', 'failed', 'dlq'];
     for (const key of keys) {
-      await redis.getClient().del(`metrics:${key}`);
+      await redis['client'].del(`metrics:${key}`);
     }
   }
 }

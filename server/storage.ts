@@ -32,6 +32,10 @@ export class MemStorage implements IStorage {
       processedAt: null,
       failedAt: null,
       errorMessage: null,
+      status: insertEvent.status || 'queued',
+      userId: insertEvent.userId || null,
+      orderId: insertEvent.orderId || null,
+      amount: insertEvent.amount || null,
     };
     this.events.set(id, event);
     return event;

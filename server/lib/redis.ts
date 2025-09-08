@@ -5,9 +5,10 @@ class RedisClient {
   
   constructor() {
     this.client = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-      retryDelayOnFailover: 100,
       maxRetriesPerRequest: 3,
       lazyConnect: true,
+      connectTimeout: 10000,
+      retryDelayOnFailover: 100,
     });
 
     this.client.on('error', (error) => {
@@ -58,8 +59,11 @@ class RedisClient {
   }
 
   // Redis Streams for job queue
-  async addToStream(streamName: string, data: Record<string, any>): Promise<string> {
-    const fields = Object.entries(data).flat();
+  async addToStream(streamName: string, data: Record<string, any>): Promise<string | null> {
+    const fields: string[] = [];
+    Object.entries(data).forEach(([key, value]) => {
+      fields.push(key, String(value));
+    });
     return await this.client.xadd(streamName, '*', ...fields);
   }
 
@@ -91,7 +95,7 @@ class RedisClient {
 
     if (!result || result.length === 0) return [];
     
-    return result[0][1].map((msg: any) => ({
+    return result[0][1].map((msg: [string, string[]]) => ({
       id: msg[0],
       fields: this.parseStreamMessage(msg[1])
     }));
