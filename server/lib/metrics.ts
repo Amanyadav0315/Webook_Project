@@ -72,7 +72,7 @@ export class MetricsService {
 
   async getMetrics(): Promise<Metrics> {
     try {
-      const [received, deduped, sent, failed, dlq, queueSize] = await Promise.all([
+      const [received, deduped, sent, failed, dlq, queueSize] = await Promise.allSettled([
         redis.getCounter('received'),
         redis.getCounter('deduped'),
         redis.getCounter('sent'),
@@ -82,22 +82,23 @@ export class MetricsService {
       ]);
 
       return {
-        received,
-        deduped,
-        sent,
-        failed,
-        dlq,
-        queueSize,
+        received: received.status === 'fulfilled' ? received.value : fallbackMetrics.get('received'),
+        deduped: deduped.status === 'fulfilled' ? deduped.value : fallbackMetrics.get('deduped'),
+        sent: sent.status === 'fulfilled' ? sent.value : fallbackMetrics.get('sent'),
+        failed: failed.status === 'fulfilled' ? failed.value : fallbackMetrics.get('failed'),
+        dlq: dlq.status === 'fulfilled' ? dlq.value : fallbackMetrics.get('dlq'),
+        queueSize: queueSize.status === 'fulfilled' ? queueSize.value : 0,
       };
     } catch (error) {
       // Return fallback metrics
+      console.log('Redis metrics completely unavailable, using fallback');
       return {
         received: fallbackMetrics.get('received'),
         deduped: fallbackMetrics.get('deduped'),
         sent: fallbackMetrics.get('sent'),
         failed: fallbackMetrics.get('failed'),
         dlq: fallbackMetrics.get('dlq'),
-        queueSize: fallbackMetrics.get('queueSize'),
+        queueSize: 0,
       };
     }
   }

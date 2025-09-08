@@ -70,10 +70,15 @@ class EventWorker {
       });
 
       // Parse payload
-      const payload = webhookPayloadSchema.parse(fields.payload);
+      const payload = webhookPayloadSchema.parse(JSON.parse(fields.payload));
       
-      // Get FCM token for user
-      const deviceToken = await redis.getFcmToken(payload.data.userId);
+      // Get FCM token for user (with fallback)
+      let deviceToken: string | null = null;
+      try {
+        deviceToken = await redis.getFcmToken(payload.data.userId);
+      } catch (error) {
+        console.log('FCM token lookup failed, using topic instead');
+      }
       
       // Send FCM notification
       const result = await firebaseService.sendNotification(
@@ -97,7 +102,11 @@ class EventWorker {
       }
 
       // Acknowledge message
-      await redis.acknowledgeMessage(this.streamName, this.groupName, messageId);
+      try {
+        await redis.acknowledgeMessage(this.streamName, this.groupName, messageId);
+      } catch (error) {
+        console.log('Failed to acknowledge message, Redis unavailable');
+      }
 
     } catch (error: any) {
       console.error(`Error processing message ${messageId}:`, error);
@@ -113,7 +122,11 @@ class EventWorker {
       }
       
       // Still acknowledge to avoid infinite retries
-      await redis.acknowledgeMessage(this.streamName, this.groupName, messageId);
+      try {
+        await redis.acknowledgeMessage(this.streamName, this.groupName, messageId);
+      } catch (error) {
+        console.log('Failed to acknowledge error message, Redis unavailable');
+      }
     }
   }
 
@@ -127,13 +140,17 @@ class EventWorker {
     
     if (SecurityService.shouldMoveToDeadLetter(newRetryCount)) {
       // Move to dead letter queue
-      await redis.moveToDeadLetter(this.streamName, {
-        event_id: event.eventId,
-        payload: JSON.stringify(event.payload),
-        error: errorMessage,
-        failed_at: Date.now(),
-        retry_count: newRetryCount,
-      });
+      try {
+        await redis.moveToDeadLetter(this.streamName, {
+          event_id: event.eventId,
+          payload: JSON.stringify(event.payload),
+          error: errorMessage,
+          failed_at: Date.now(),
+          retry_count: newRetryCount,
+        });
+      } catch (error) {
+        console.log('Failed to move to dead letter queue, Redis unavailable');
+      }
 
       // Update event as failed
       await storage.updateEvent(event.id, {
@@ -154,12 +171,16 @@ class EventWorker {
       console.log(`Retrying event ${event.eventId} in ${delay}ms (attempt ${newRetryCount})`);
       
       setTimeout(async () => {
-        await redis.addToStream(this.streamName, {
-          event_id: event.eventId,
-          payload: JSON.stringify(event.payload),
-          timestamp: Date.now(),
-          retry_count: newRetryCount,
-        });
+        try {
+          await redis.addToStream(this.streamName, {
+            event_id: event.eventId,
+            payload: JSON.stringify(event.payload),
+            timestamp: Date.now(),
+            retry_count: newRetryCount,
+          });
+        } catch (error) {
+          console.log('Failed to re-queue event for retry, Redis unavailable');
+        }
       }, delay);
 
       // Update retry count

@@ -8,7 +8,6 @@ class RedisClient {
       maxRetriesPerRequest: 3,
       lazyConnect: true,
       connectTimeout: 10000,
-      retryDelayOnFailover: 100,
     });
 
     this.client.on('error', (error) => {
@@ -85,7 +84,7 @@ class RedisClient {
     groupName: string, 
     consumerName: string, 
     count = 1
-  ): Promise<any[]> {
+  ): Promise<Array<{id: string, fields: Record<string, any>}>> {
     const result = await this.client.xreadgroup(
       'GROUP', groupName, consumerName,
       'COUNT', count,
@@ -105,7 +104,7 @@ class RedisClient {
     await this.client.xack(streamName, groupName, messageId);
   }
 
-  async moveToDeadLetter(streamName: string, data: Record<string, any>): Promise<string> {
+  async moveToDeadLetter(streamName: string, data: Record<string, any>): Promise<string | null> {
     return await this.addToStream(`${streamName}-dlq`, data);
   }
 

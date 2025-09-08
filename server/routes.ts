@@ -27,7 +27,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const rawBody = req.body as string;
       const signature = req.headers['x-signature'] as string;
       const timestamp = req.headers['x-timestamp'] as string;
-      const clientIP = req.ip || req.connection.remoteAddress || 'unknown';
+      const clientIP = (req.ip || req.socket?.remoteAddress || 'unknown') as string;
 
       // Validate required headers
       if (!signature || !timestamp) {
@@ -167,14 +167,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { limit = '20', offset = '0', status, search } = req.query;
       
+      // Validate query parameters
+      const parsedLimit = Math.min(Math.max(parseInt(limit as string) || 20, 1), 1000);
+      const parsedOffset = Math.max(parseInt(offset as string) || 0, 0);
+      
       let events;
-      if (search) {
-        events = await storage.searchEventsByEventId(search as string);
+      if (search && typeof search === 'string') {
+        events = await storage.searchEventsByEventId(search.trim());
       } else {
         events = await storage.getEvents(
-          parseInt(limit as string),
-          parseInt(offset as string),
-          status as string
+          parsedLimit,
+          parsedOffset,
+          status && typeof status === 'string' ? status : undefined
         );
       }
       
@@ -221,13 +225,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         failedAt: null,
       });
 
-      // Re-add to stream
-      await redis.addToStream('orders-stream', {
-        event_id: event.eventId,
-        payload: JSON.stringify(event.payload),
-        timestamp: Date.now(),
-        retry_count: 0,
-      });
+      // Re-add to stream (with fallback)
+      try {
+        await redis.addToStream('orders-stream', {
+          event_id: event.eventId,
+          payload: JSON.stringify(event.payload),
+          timestamp: Date.now(),
+          retry_count: 0,
+        });
+      } catch (error) {
+        console.log('Redis stream unavailable for replay, event updated in memory only');
+      }
 
       return res.status(200).json({ message: 'Event replayed successfully' });
     } catch (error) {

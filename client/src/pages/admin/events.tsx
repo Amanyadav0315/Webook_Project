@@ -25,7 +25,21 @@ export default function EventsPage() {
     isLoading: eventsLoading,
     refetch: refetchEvents 
   } = useQuery<Event[]>({
-    queryKey: ['/api/events', { search: searchQuery, status: statusFilter === "all" ? "" : statusFilter }],
+    queryKey: [
+      '/api/events', 
+      searchQuery || '',
+      statusFilter === "all" ? '' : statusFilter || ''
+    ],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (searchQuery) params.set('search', searchQuery);
+      if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter);
+      
+      const url = `/api/events${params.toString() ? '?' + params.toString() : ''}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Failed to fetch events');
+      return response.json();
+    },
     refetchInterval: autoRefresh ? 30000 : false,
   });
 
@@ -47,15 +61,19 @@ export default function EventsPage() {
       const response = await apiRequest('GET', '/api/events?limit=1000');
       const data = await response.json();
       
+      if (!Array.isArray(data)) {
+        throw new Error('Invalid data format received');
+      }
+      
       const csv = [
         ['Event ID', 'Type', 'User ID', 'Status', 'Created', 'Retries'].join(','),
         ...data.map((event: Event) => [
-          event.eventId,
-          event.type,
-          event.userId || '',
-          event.status,
-          event.createdAt,
-          `${event.retryCount}/3`
+          `"${event.eventId}"`,
+          `"${event.type}"`,
+          `"${event.userId || ''}"`,
+          `"${event.status}"`,
+          `"${new Date(event.createdAt).toISOString()}"`,
+          `"${event.retryCount}/3"`
         ].join(','))
       ].join('\n');
 
@@ -64,7 +82,9 @@ export default function EventsPage() {
       const a = document.createElement('a');
       a.href = url;
       a.download = `events-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Export failed:', error);

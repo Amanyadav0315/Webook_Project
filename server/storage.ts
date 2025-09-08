@@ -36,6 +36,7 @@ export class MemStorage implements IStorage {
       userId: insertEvent.userId || null,
       orderId: insertEvent.orderId || null,
       amount: insertEvent.amount || null,
+      retryCount: insertEvent.retryCount || 0,
     };
     this.events.set(id, event);
     return event;

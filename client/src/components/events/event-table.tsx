@@ -50,7 +50,19 @@ export default function EventTable({ events, loading, onViewEvent, onReplayEvent
 
   const copyEventId = async (eventId: string) => {
     try {
-      await navigator.clipboard.writeText(eventId);
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(eventId);
+      } else {
+        // Fallback for older browsers or non-HTTPS
+        const textArea = document.createElement('textarea');
+        textArea.value = eventId;
+        textArea.style.position = 'absolute';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
       toast({
         title: "Copied!",
         description: `Event ID ${eventId} copied to clipboard`,
