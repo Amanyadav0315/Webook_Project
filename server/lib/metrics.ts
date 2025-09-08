@@ -1,51 +1,115 @@
 import { redis } from './redis';
 import { type Metrics } from '@shared/schema';
 
+// Fallback in-memory metrics store
+class InMemoryMetrics {
+  private metrics: Record<string, number> = {
+    received: 0,
+    deduped: 0,
+    sent: 0,
+    failed: 0,
+    dlq: 0,
+    queueSize: 0,
+  };
+
+  increment(key: string): void {
+    this.metrics[key] = (this.metrics[key] || 0) + 1;
+  }
+
+  get(key: string): number {
+    return this.metrics[key] || 0;
+  }
+
+  reset(): void {
+    Object.keys(this.metrics).forEach(key => {
+      this.metrics[key] = 0;
+    });
+  }
+}
+
+const fallbackMetrics = new InMemoryMetrics();
+
 export class MetricsService {
   async incrementReceived(): Promise<void> {
-    await redis.incrementCounter('received');
+    try {
+      await redis.incrementCounter('received');
+    } catch (error) {
+      fallbackMetrics.increment('received');
+    }
   }
 
   async incrementDeduped(): Promise<void> {
-    await redis.incrementCounter('deduped');
+    try {
+      await redis.incrementCounter('deduped');
+    } catch (error) {
+      fallbackMetrics.increment('deduped');
+    }
   }
 
   async incrementSent(): Promise<void> {
-    await redis.incrementCounter('sent');
+    try {
+      await redis.incrementCounter('sent');
+    } catch (error) {
+      fallbackMetrics.increment('sent');
+    }
   }
 
   async incrementFailed(): Promise<void> {
-    await redis.incrementCounter('failed');
+    try {
+      await redis.incrementCounter('failed');
+    } catch (error) {
+      fallbackMetrics.increment('failed');
+    }
   }
 
   async incrementDlq(): Promise<void> {
-    await redis.incrementCounter('dlq');
+    try {
+      await redis.incrementCounter('dlq');
+    } catch (error) {
+      fallbackMetrics.increment('dlq');
+    }
   }
 
   async getMetrics(): Promise<Metrics> {
-    const [received, deduped, sent, failed, dlq, queueSize] = await Promise.all([
-      redis.getCounter('received'),
-      redis.getCounter('deduped'),
-      redis.getCounter('sent'),
-      redis.getCounter('failed'),
-      redis.getCounter('dlq'),
-      redis.getStreamLength('orders-stream'),
-    ]);
+    try {
+      const [received, deduped, sent, failed, dlq, queueSize] = await Promise.all([
+        redis.getCounter('received'),
+        redis.getCounter('deduped'),
+        redis.getCounter('sent'),
+        redis.getCounter('failed'),
+        redis.getCounter('dlq'),
+        redis.getStreamLength('orders-stream'),
+      ]);
 
-    return {
-      received,
-      deduped,
-      sent,
-      failed,
-      dlq,
-      queueSize,
-    };
+      return {
+        received,
+        deduped,
+        sent,
+        failed,
+        dlq,
+        queueSize,
+      };
+    } catch (error) {
+      // Return fallback metrics
+      return {
+        received: fallbackMetrics.get('received'),
+        deduped: fallbackMetrics.get('deduped'),
+        sent: fallbackMetrics.get('sent'),
+        failed: fallbackMetrics.get('failed'),
+        dlq: fallbackMetrics.get('dlq'),
+        queueSize: fallbackMetrics.get('queueSize'),
+      };
+    }
   }
 
   async resetMetrics(): Promise<void> {
-    const keys = ['received', 'deduped', 'sent', 'failed', 'dlq'];
-    for (const key of keys) {
-      await redis['client'].del(`metrics:${key}`);
+    try {
+      const keys = ['received', 'deduped', 'sent', 'failed', 'dlq'];
+      for (const key of keys) {
+        await redis['client'].del(`metrics:${key}`);
+      }
+    } catch (error) {
+      fallbackMetrics.reset();
     }
   }
 }
